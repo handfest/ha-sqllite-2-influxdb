@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 import logging
 import os
 
+# regarding urllib3 Warnings when certificate is not matching
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # Load environment variables
 load_dotenv()
 
