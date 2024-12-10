@@ -21,9 +21,11 @@ influx_url = os.getenv("INFLUXDB_URL")
 influx_token = os.getenv("INFLUXDB_TOKEN")
 influx_org = os.getenv("INFLUXDB_ORG")
 influx_bucket = os.getenv("INFLUXDB_BUCKET")
+influx_ssl = os.getenv("SSL")
+influx_verify_ssl = os.getenv("VERIFY_SSL")
 
 # Validate environment variables
-required_env_vars = [sqlite_db, influx_url, influx_token, influx_org, influx_bucket]
+required_env_vars = [sqlite_db, influx_url, influx_token, influx_org, influx_bucket , influx_ssl, influx_verify_ssl]
 if any(v is None for v in required_env_vars):
     logging.error("One or more required environment variables are not set.")
     exit(1)
@@ -44,7 +46,7 @@ def connect_to_sqlite(db_path):
 def connect_to_influxdb(url, token, org):
     try:
         # Connect to InfluxDB and return the client write and query APIs
-        client = InfluxDBClient(url=url, token=token, org=org)
+        client = InfluxDBClient(url=url, token=token, org=org, ssl=ssl, verify_ssl=verify_ssl)
         logging.info("Successfully connected to InfluxDB")
         return client.write_api(write_options=SYNCHRONOUS), client.query_api()
     except Exception as e:
@@ -61,7 +63,9 @@ def get_oldest_influx_timestamp(query_api):
           |> sort(columns: ["_time"], desc: false)
           |> limit(n: 1)
         '''
+        logging.info(f"Query String: {query_string}")
         result = query_api.query(org=influx_org, query=query_string)
+        result = "2024-12-10T08:55:00.000000+00:00"
         if result and len(result) > 0 and len(result[0].records) > 0:
             return result[0].records[0].get_time().isoformat()
     except Exception as e:
