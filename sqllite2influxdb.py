@@ -8,8 +8,10 @@ import logging
 import os
 
 # regarding urllib3 Warnings when certificate is not matching
+
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 # Load environment variables
 load_dotenv()
@@ -25,8 +27,13 @@ influx_url = os.getenv("INFLUXDB_URL")
 influx_token = os.getenv("INFLUXDB_TOKEN")
 influx_org = os.getenv("INFLUXDB_ORG")
 influx_bucket = os.getenv("INFLUXDB_BUCKET")
-influx_ssl = os.getenv("SSL")
-influx_verify_ssl = os.getenv("VERIFY_SSL")
+influx_ssl = os.getenv("INFLUXDB_SSL", "false").lower() == "true"
+influx_verify_ssl = os.getenv("INFLUXDB_VERIFY_SSL", "false").lower() == "true"
+oldest = os.getenv("OLDEST")
+#oldest = "2024-12-10T08:55:00.000000+00:00"
+
+logging.info(f"InfluxDB SSL: {influx_ssl} verify_ssl: {influx_verify_ssl}")
+logging.info(f"Looking for datasets older then: {oldest}")
 
 # Validate environment variables
 required_env_vars = [sqlite_db, influx_url, influx_token, influx_org, influx_bucket , influx_ssl, influx_verify_ssl]
@@ -47,11 +54,12 @@ def connect_to_sqlite(db_path):
         logging.error(f"SQLite error: {e}")
         exit(1)
 
-def connect_to_influxdb(url, token, org):
+def connect_to_influxdb(url, token, org, influx_ssl , influx_verify_ssl):
     try:
         # Connect to InfluxDB and return the client write and query APIs
-        client = InfluxDBClient(url=url, token=token, org=org, ssl=ssl, verify_ssl=verify_ssl)
-        logging.info("Successfully connected to InfluxDB")
+        #client = InfluxDBClient(url=url, token=token, org=org, ssl=influx_ssl, verify_ssl=False)
+        client = InfluxDBClient(url=url, token=token, org=org, ssl=influx_ssl, verify_ssl=influx_verify_ssl)
+        logging.info(f"Successfully connected to InfluxDB SSL: {influx_ssl} verify_ssl: {influx_verify_ssl}")
         return client.write_api(write_options=SYNCHRONOUS), client.query_api()
     except Exception as e:
         logging.error(f"InfluxDB connection error: {e}")
@@ -69,7 +77,7 @@ def get_oldest_influx_timestamp(query_api):
         '''
         logging.info(f"Query String: {query_string}")
         result = query_api.query(org=influx_org, query=query_string)
-        result = "2024-12-10T08:55:00.000000+00:00"
+        
         if result and len(result) > 0 and len(result[0].records) > 0:
             return result[0].records[0].get_time().isoformat()
     except Exception as e:
@@ -79,6 +87,7 @@ def get_oldest_influx_timestamp(query_api):
 def format_timestamp(oldest_timestamp):
     try:
         # Convert ISO format timestamp to a string format compatible with SQLite
+        # oldest_timestamp = "2024-12-10T08:55:00.000000+00:00"
         dt_obj = datetime.fromisoformat(oldest_timestamp.replace('Z', ''))
         return dt_obj.strftime("%Y-%m-%d %H:%M:%S")
     except ValueError as e:
@@ -171,10 +180,13 @@ def batch_insert_to_influx(write_api, rows):
 def main():
     # Main execution flow
     conn, cursor = connect_to_sqlite(sqlite_db)
-    write_api, query_api = connect_to_influxdb(influx_url, influx_token, influx_org)
+    write_api, query_api = connect_to_influxdb(influx_url, influx_token, influx_org , influx_ssl , influx_verify_ssl)
 
     # Get the oldest timestamp from InfluxDB to determine how much data to process
-    oldest_influx_timestamp = get_oldest_influx_timestamp(query_api)
+    if oldest:
+        oldest_influx_timestamp = oldest
+    else:  
+        oldest_influx_timestamp = get_oldest_influx_timestamp(query_api)
     logging.info(f"Oldest InfluxDB timestamp: {oldest_influx_timestamp}")
 
     # Format the timestamp for SQLite and build the query
